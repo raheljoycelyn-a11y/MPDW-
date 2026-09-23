@@ -1,0 +1,452 @@
+---
+title: "TUGAS MPDW PERTEMUAN 4"
+author: "Rahel Joycelyn Hutagalung"
+date: "2026-09-17"
+format:
+  html:
+    self-contained: true
+    embed-resources: true
+    toc: true
+    toc-title: "Daftar Isi"
+    toc-depth: 3
+    toc-location: left
+    code-fold: false
+    code-copy: true
+editor:
+  markdown:
+    wrap: 72
+---
+
+# Proses MA(2)
+
+## Pembangkitan Data
+
+Model $MA(2)$ yang dibangkitkan memiliki parameter $\theta_1 = 0.4$ dan
+$\theta_2 = 0.6$ sebanyak $n = 300$ observasi. Persamaan stokastik untuk
+model ini dirumuskan sebagai berikut:
+
+$$Y_t = e_t + 0.4e_{t-1} + 0.6e_{t-2}$$
+
+dengan $e_t \sim N(0, \sigma^2)$ merupakan galat white noise.
+
+```{r warning=FALSE}
+library(TSA)
+
+set.seed(65)
+n <- 300
+
+# Pembangkitan white noise
+wn <- rnorm(n)
+```
+
+### Manual
+
+```{r}
+ma2_manual <- numeric(n)
+ma2_manual[1] <- wn[1]
+ma2_manual[2] <- wn[2] + 0.4 * wn[1]
+for (i in 3:n) {
+  ma2_manual[i] <- wn[i] + 0.4 * wn[i - 1] + 0.6 * wn[i - 2]
+}
+ma2_manual
+```
+
+### Pake arima.sim()
+
+```{r}
+ma2_sim <- arima.sim(list(order = c(0, 0, 2), ma = c(0.4, 0.6)), n = n)
+ma2_sim
+```
+
+## Plot TS, ACF, PACF, EACF, dan Stasioneritas
+
+### Plot Time Series
+
+```{r}
+par(mfrow = c(2, 1), mar = c(3, 3, 2, 1))
+
+ts.plot(ma2_manual, main = "Plot Time Series MA(2) Manual", ylab = expression(Y[t]))
+ts.plot(ma2_sim, main = "Plot Time Series MA(2) arima.sim", ylab = expression(Y[t]))
+```
+
+### Plot Autokorelasi
+
+```{r}
+par(mfrow = c(1, 2))
+acf(ma2_manual, lag.max = 20, main = "Plot ACF MA(2)")
+pacf(ma2_manual, lag.max = 20, main = "Plot PACF MA(2)")
+```
+
+### Tabel EACF
+
+```{r}
+eacf(ma2_manual)
+```
+
+Berdasarkan plot time series, pergerakan data tebaran fluktuasi berada
+di sekitar rataan konstan $E[Y_t] = 0$ dan ragamnya
+$\text{Var}(Y_t) = \sigma_e^2(1 + \theta_1^2 + \theta_2^2)$ bersifat
+konstan seiring perubahan waktu ($t$). Hal ini menandakan bahwa proses
+$MA(2)$ yang dibangkitkan stasioner dalam rataan maupun ragam.
+
+- Plot ACF menunjukkan sifat cut off setelah lag ke-2 ($k = 2$), yang
+  mengindikasikan bahwa korelasi antar observasi hanya bertahan hingga
+  lag orde ke-2.
+
+- Plot PACF bersifat tails off (meluruh secara perlahan/membentuk
+  gelombang sinusoid).
+
+- Kombinasi ACF cut off di lag-2 dan PACF tails off mengonfirmasi
+  identifikasi ordo peubah $MA(2)$.
+
+- Pola segitiga nol pada matriks EACF dimulai dari sudut baris ordo
+  $AR(0)$ dan kolom ordo $MA(2)$, yang semakin memperkuat bahwa model
+  teridentifikasi sebagai proses $MA(2)$.
+
+## Scatterplot Yt dengan sesamanya
+
+```{r}
+yt   <- ma2_manual[4:n]
+yt_1 <- ma2_manual[3:(n - 1)]
+yt_2 <- ma2_manual[2:(n - 2)]
+yt_3 <- ma2_manual[1:(n - 3)]
+
+par(mfrow = c(1, 3))
+plot(yt_1, yt, main = expression(paste(Y[t], " vs ", Y[t-1])), 
+     xlab = expression(Y[t-1]), ylab = expression(Y[t]), col = "darkblue", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_2, yt, main = expression(paste(Y[t], " vs ", Y[t-2])), 
+     xlab = expression(Y[t-2]), ylab = expression(Y[t]), col = "darkgreen", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_3, yt, main = expression(paste(Y[t], " vs ", Y[t-3])), 
+     xlab = expression(Y[t-3]), ylab = expression(Y[t]), col = "darkred", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+```
+
+1.  Hubungan $Y_t$ dengan $Y_{t-1}$: Scatterplot membentuk pola linier
+    positif sedang mencerminkan adanya autokorelasi positif sebesar
+    $\rho_1 \approx 0.421$.
+
+2.  Hubungan $Y_t$ dengan $Y_{t-2}$: Scatterplot masih menunjukkan pola
+    linier positif dengan kekuatan yang hampir sama
+    ($\rho_2 \approx 0.395$).
+
+3.  Hubungan $Y_t$ dengan $Y_{t-3}$: Scatterplot cenderung memencar
+    secara acak tanpa pola linier yang jelas. Hal ini mengonfirmasi
+    bahwa untuk lag $k \ge 3$, nilai korelasi teoritis bernilai nol
+    ($\rho_k = 0$).
+
+## Perhitungan Autokorelasi
+
+### Dari Data Bangkitan
+```{r}
+rho_sample <- acf(ma2_manual, lag.max = 3, plot = FALSE)$acf[1:4]
+
+t1 <- 0.4
+t2 <- 0.6
+denom <- 1 + t1^2 + t2^2
+
+rho_teoritis <- c(
+  1,
+  (t1 + t1 * t2) / denom,
+  t2 / denom,
+  0
+)
+
+tabel_korelasi <- data.frame(
+  Lag = 0:3,
+  Nilai_Teoritis = round(rho_teoritis, 5),
+  Sampel_Manual = round(rho_sample, 5)
+)
+tabel_korelasi
+```
+
+### Teoritis
+
+Autokorelasi teoritis pada lag ke-$k$ ($\rho_k$) didefinisikan sebagai
+$\rho_k = \frac{\gamma_k}{\gamma_0}$:
+
+1.  Ragam / Autokovarians Lag-0
+    ($\gamma_0$):$$\gamma_0 = \text{Var}(Y_t) = \sigma_e^2(1 + \theta_1^2 + \theta_2^2) = \sigma_e^2(1 + 0.4^2 + 0.6^2) = 1.52\sigma_e^2$$
+
+2.  Autokovarians dan Autokorelasi Lag-1
+    ($\rho_1$):$$\gamma_1 = \sigma_e^2(\theta_1 + \theta_1\theta_2) = \sigma_e^2(0.4 + 0.4 \times 0.6) = 0.64\sigma_e^2$$$$\rho_1 = \frac{0.64}{1.52} = \frac{8}{19} \approx 0.42105$$
+
+3.  Autokovarians dan Autokorelasi Lag-2
+    ($\rho_2$):$$\gamma_2 = \sigma_e^2(\theta_2) = 0.6\sigma_e^2$$$$\rho_2 = \frac{0.6}{1.52} = \frac{15}{38} \approx 0.39474$$
+
+4.  Autokorelasi Lag $k \ge 3$
+    ($\rho_k$):$$\rho_k = 0 \quad \forall k \ge 3$$
+
+
+# Proses AR(2)
+
+## Pembangkitan Model
+
+Model $AR(2)$ yang dibangkitkan memiliki parameter $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ sebanyak $n = 300$ observasi. Persamaan stokastiknya dirumuskan sebagai berikut:
+$$Y_t = 0.5Y_{t-1} + 0.2Y_{t-2} + e_t$$
+dengan $e_t \sim N(0, \sigma^2)$ merupakan galat white noise.
+
+```{r}
+library(TSA)
+
+set.seed(65)
+n <- 300
+
+wn <- rnorm(n)
+```
+
+### Manual
+```{r}
+ar2_manual <- numeric(n)
+ar2_manual[1] <- wn[1]
+ar2_manual[2] <- 0.5 * ar2_manual[1] + wn[2]
+for (i in 3:n) {
+  ar2_manual[i] <- 0.5 * ar2_manual[i - 1] + 0.2 * ar2_manual[i - 2] + wn[i]
+}
+ar2_manual
+```
+
+### Pake arima.sim
+```{r}
+ar2_sim <- arima.sim(list(order = c(2, 0, 0), ar = c(0.5, 0.2)), n = n)
+```
+
+## Plot TS, ACF, PACF, EACF, dan Stasioneritas
+
+### Plot Time Series
+
+```{r}
+par(mfrow = c(2, 1), mar = c(3, 4, 2, 1))
+ts.plot(ar2_manual, main = "Plot Time Series AR(2) Manual", ylab = expression(Y[t]))
+ts.plot(ar2_sim, main = "Plot Time Series AR(2) arima.sim", ylab = expression(Y[t]))
+```
+
+### Plot ACF dan PACF
+
+```{r}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+acf(ar2_manual, lag.max = 20, main = "Plot ACF AR(2)")
+pacf(ar2_manual, lag.max = 20, main = "Plot PACF AR(2)")
+```
+
+### Tabel EACF
+
+```{r}
+eacf(ar2_manual)
+```
+
+Persamaan karakteristik $AR(2)$: $1 - 0.5B - 0.2B^2 = 0$. Akar-akarnya memenuhi syarat kestasioneran $\vert{}\phi_2\vert{} = \vert{}0.2\vert{} < 1$, $\phi_1 + \phi_2 = 0.7 < 1$, dan $\phi_2 - \phi_1 = -0.3 < 1$. Pergerakan data tampak berfluktuasi secara konstan di sekitar nilai harapan $E[Y_t] = 0$ dengan ragam yang stabil, menandakan data stasioner dalam rataan dan ragam.
+
+- Plot ACF bersifat tails off (meluruh secara eksponensial/lambat).
+
+- Plot PACF mengalami cut off setelah lag ke-2 ($k = 2$).
+
+- Pola kombinasi ACF tails off dan PACF cut off di lag-2 secara spesifik menandakan struktur proses $AR(2)$.
+
+- Sudut segitiga nol (zero triangle) terbentuk dari baris $AR(2)$ dan kolom $MA(0)$ mengonfirmasi bahwa model terbaik adalah $AR(2)$.
+
+## Scatterplot
+
+```{r}
+yt   <- ar2_manual[4:n]
+yt_1 <- ar2_manual[3:(n - 1)]
+yt_2 <- ar2_manual[2:(n - 2)]
+yt_3 <- ar2_manual[1:(n - 3)]
+
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+plot(yt_1, yt, main = expression(paste(Y[t], " vs ", Y[t-1])), 
+     xlab = expression(Y[t-1]), ylab = expression(Y[t]), col = "darkblue", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_2, yt, main = expression(paste(Y[t], " vs ", Y[t-2])), 
+     xlab = expression(Y[t-2]), ylab = expression(Y[t]), col = "darkgreen", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_3, yt, main = expression(paste(Y[t], " vs ", Y[t-3])), 
+     xlab = expression(Y[t-3]), ylab = expression(Y[t]), col = "darkred", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+```
+
+1. Hubungan $Y_t$ dengan $Y_{t-1}$ membentuk pola hubungan linier positif kuat ($\rho_1 \approx 0.625$) yang mencerminkan ketergantungan langsung yang besar pada 1 periode sebelumnya.
+
+2. Hubungan $Y_t$ dengan $Y_{t-2}$ membentuk pola linier positif sedang ($\rho_2 \approx 0.5125$).
+
+3. Hubungan $Y_t$ dengan $Y_{t-3}$ membentuk pola linier yang mulai meluruh tetapi masih menunjukkan korelasi ($\rho_3 \approx 0.381$). Berbeda dengan model MA, pada proses AR nilai korelasi terus berlanjut secara meluruh (tails off) untuk seluruh lag $k$.
+
+## Perhitungan Autokorelasi
+
+### Dari Data Bangkitan
+
+```{r}
+rho_sample2 <- acf(ar2_manual, lag.max = 3, plot = FALSE)$acf[1:4]
+
+# Autokorelasi Teoritis Yule-Walker
+p12 <- 0.5
+p22 <- 0.2
+
+rho0_t <- 1
+rho1_t <- p12 / (1 - p22)
+rho2_t <- (p12 * rho1_t) + (p22 * rho0_t)
+rho3_t <- (p12 * rho2_t) + (p22 * rho1_t)
+
+rho_teoritis2 <- c(rho0_t, rho1_t, rho2_t, rho3_t)
+
+# Menyusun Tabel Perbandingan
+tabel_korelasi_ar2 <- data.frame(
+  Lag = 0:3,
+  Nilai_Teoritis = round(rho_teoritis2, 5),
+  Sampel_Manual = round(rho_sample2, 5)
+)
+tabel_korelasi_ar2
+```
+
+### Teoritis
+
+Untuk proses $AR(2)$ dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$:
+
+1. Lag 0 ($\rho_0$):
+$$\rho_0 = 1$$
+
+2. Lag 1 ($\rho_1$):
+$$\rho_1 = \frac{\phi_1}{1 - \phi_2} = \frac{0.5}{1 - 0.2} = \frac{0.5}{0.8} = 0.625$$
+
+3. Lag 2 ($\rho_2$):
+$$\rho_2 = \phi_1 \rho_1 + \phi_2 \rho_0 = (0.5 \times 0.625) + (0.2 \times 1) = 0.3125 + 0.2 = 0.5125$$
+
+4. Lag 3 ($\rho_3$):
+$$\rho_3 = \phi_1 \rho_2 + \phi_2 \rho_1 = (0.5 \times 0.5125) + (0.2 \times 0.625) = 0.25625 + 0.125 = 0.38125$$
+
+# Proses ARMA(2,2)
+
+## Pembangkitan Data
+
+Model $ARMA(2,2)$ yang dibangkitkan memiliki parameter $\phi_1 = 0.5$, $\phi_2 = 0.2$, $\theta_1 = 0.4$, dan $\theta_2 = 0.6$ sebanyak $n = 300$ observasi. Persamaan umum stokastiknya dirumuskan sebagai:
+$$Y_t = 0.5Y_{t-1} + 0.2Y_{t-2} + e_t + 0.4e_{t-1} + 0.6e_{t-2}$$
+dengan $e_t \sim N(0, \sigma^2)$ merupakan galat white noise.
+
+```{r}
+library(TSA)
+
+set.seed(65)
+n_obs <- 300
+
+wn_arma22 <- rnorm(n_obs)
+```
+
+### Manual
+```{r}
+arma22_manual <- numeric(n_obs)
+
+arma22_manual[1] <- wn_arma22[1]
+arma22_manual[2] <- 0.5 * arma22_manual[1] + wn_arma22[2] + 0.4 * wn_arma22[1]
+
+for (i in 3:n_obs) {
+  arma22_manual[i] <- 0.5 * arma22_manual[i - 1] + 0.2 * arma22_manual[i - 2] + 
+                      wn_arma22[i] + 0.4 * wn_arma22[i - 1] + 0.6 * wn_arma22[i - 2]
+}
+arma22_manual
+```
+
+### Pake arima.sim
+```{r}
+arma22_sim <- arima.sim(list(order = c(2, 0, 2), ar = c(0.5, 0.2), ma = c(0.4, 0.6)), n = n_obs)
+```
+
+## Plot TS, ACF, PACF, EACF, dan Stasioneritas
+
+### Plot Time Series
+
+```{r}
+par(mfrow = c(2, 1), mar = c(3, 4, 2, 1))
+ts.plot(arma22_manual, main = "Plot Time Series ARMA(2,2) Manual", ylab = expression(Y[t]))
+ts.plot(arma22_sim, main = "Plot Time Series ARMA(2,2) arima.sim", ylab = expression(Y[t]))
+```
+
+### Plot ACF dan PACF
+```{r}
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+acf(arma22_manual, lag.max = 20, main = "Plot ACF ARMA(2,2)")
+pacf(arma22_manual, lag.max = 20, main = "Plot PACF ARMA(2,2)")
+```
+
+### Plot EACF
+```{r}
+eacf(arma22_manual)
+```
+
+Persamaan komponen AR: $1 - 0.5B - 0.2B^2 = 0$. Karena akar-akar polinomialnya terletak di luar lingkaran satuan ($\vert{}\phi_2\vert{} = 0.2 < 1$), maka proses $ARMA(2,2)$ ini stasioner dalam rataan dan ragam. Hal ini diperkuat oleh plot time series yang berfluktuasi stabil di sekitar rataan $E[Y_t] = 0$.
+
+- Plot ACF bersifat tails off (meluruh secara perlahan akibat adanya komponen AR).
+
+- Plot PACF juga bersifat tails off (meluruh secara perlahan akibat adanya komponen MA).
+
+- Karakteristik utama proses $ARMA(p,q)$ ditunjukkan oleh kedua plot (ACF dan PACF) yang sama-sama meluruh (tails off).
+
+- Matriks Segitiga nol pada hasil eacf() memiliki batas sudut di baris $AR(2)$ dan kolom $MA(2)$, yang mengonfirmasi bahwa ordo model yang terbentuk adalah $ARMA(2,2)$.
+
+## Scatterplot
+```{r}
+yt_arma22   <- arma22_manual[4:n_obs]
+yt_1_arma22 <- arma22_manual[3:(n_obs - 1)]
+yt_2_arma22 <- arma22_manual[2:(n_obs - 2)]
+yt_3_arma22 <- arma22_manual[1:(n_obs - 3)]
+
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+plot(yt_1_arma22, yt_arma22, main = expression(paste(Y[t], " vs ", Y[t-1])), 
+     xlab = expression(Y[t-1]), ylab = expression(Y[t]), col = "darkblue", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_2_arma22, yt_arma22, main = expression(paste(Y[t], " vs ", Y[t-2])), 
+     xlab = expression(Y[t-2]), ylab = expression(Y[t]), col = "darkgreen", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+
+plot(yt_3_arma22, yt_arma22, main = expression(paste(Y[t], " vs ", Y[t-3])), 
+     xlab = expression(Y[t-3]), ylab = expression(Y[t]), col = "darkred", pch = 16)
+abline(h = 0, v = 0, lty = 2, col = "gray")
+```
+
+1. Hubungan $Y_t$ vs $Y_{t-1}$ membentuk pola hubungan linier positif yang sangat kuat dipicu oleh kombinasi bobot $\phi_1 = 0.5$ dan $\theta_1 = 0.4$.
+
+2. Hubungan $Y_t$ vs $Y_{t-2}$ memperlihatkan keterikatan linier positif tingkat menengah.
+
+3. Hubungan $Y_t$ vs $Y_{t-3}$. Seiring bertambahnya lag, tebaran titik meluruh namun tetap menyisakan pola linier halus khas sifat tails off dari komponen autoregresif.
+
+## Perhitungan Autokorelasi
+
+### Dari Data Bangkitan
+
+```{r}
+phi_vec   <- c(0.5, 0.2)
+theta_vec <- c(0.4, 0.6)
+
+rho_arma22_teoritis <- ARMAacf(ar = phi_vec, ma = theta_vec, lag.max = 3)
+
+rho_arma22_sample <- acf(arma22_manual, lag.max = 3, plot = FALSE)$acf[1:4]
+
+tabel_arma22 <- data.frame(
+  Lag = 0:3,
+  Nilai_Teoritis = round(as.vector(rho_arma22_teoritis), 5),
+  Sampel_Manual  = round(as.vector(rho_arma22_sample), 5)
+)
+
+tabel_arma22
+```
+
+### Teoritis
+
+Parameter model: $\phi_1 = 0.5, \phi_2 = 0.2, \theta_1 = 0.4, \theta_2 = 0.6$.
+
+Sistem persamaan autokovarians ($\gamma_k$) diperoleh dari pengalihan $Y_t$ dengan lag-nya:
+
+$$\gamma_0 = \phi_1 \gamma_1 + \phi_2 \gamma_2 + \sigma_e^2(1 + \theta_1^2 + \theta_2^2 + \theta_1\phi_1 + \theta_2\phi_2 + \theta_1\theta_2\phi_1)$$
+
+$$\gamma_1 = \phi_1 \gamma_0 + \phi_2 \gamma_1 + \sigma_e^2(\theta_1 + \theta_1\theta_2 + \theta_2\phi_1)$$
+
+$$\gamma_2 = \phi_1 \gamma_1 + \phi_2 \gamma_0 + \sigma_e^2(\theta_2)$$
+
+$$\gamma_k = \phi_1 \gamma_{k-1} + \phi_2 \gamma_{k-2} \quad \forall k \ge 3$$
+
+Dengan membagi seluruh persamaannya terhadap $\gamma_0$, diperoleh autokorelasi teoritis $\rho_k = \frac{\gamma_k}{\gamma_0}$ seperti tabel dari data bangkitan
